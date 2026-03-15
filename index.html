@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>IPTV Live TV</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <img src="assets/logo/logo.png" alt="IPTV logo" class="brand-logo">
+        <div>
+          <div class="brand-title">IPTV Live TV</div>
+          <div class="brand-subtitle">Titan OS Live TV projekt</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button id="openSettingsBtn" class="icon-btn focusable" data-focus-group="topbar" aria-label="Nastavenia">⚙</button>
+        <div class="clock-wrap">
+          <div id="clockTime" class="clock-time">--:--</div>
+          <div id="clockDate" class="clock-date">--.--.----</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel categories-panel">
+        <div class="panel-header">Kategórie</div>
+        <div id="categoryList" class="list category-list"></div>
+      </aside>
+
+      <section class="panel channels-panel">
+        <div class="panel-header channel-header-row">
+          <span>Kanály</span>
+          <span id="channelCount" class="muted">0</span>
+        </div>
+        <div class="search-wrap">
+          <input id="channelSearch" class="search-input focusable" data-focus-group="search" type="text" placeholder="Vyhľadať kanál" autocomplete="off">
+        </div>
+        <div id="channelList" class="list channel-list"></div>
+      </section>
+
+      <section class="panel player-panel">
+        <div class="player-shell" id="playerShell">
+          <video id="videoPlayer" playsinline controls></video>
+          <div id="playerEmpty" class="player-empty">
+            <img src="assets/logo/logo.png" alt="IPTV" class="player-empty-logo">
+            <div class="player-empty-title">Vyber kanál</div>
+            <div class="player-empty-text">Po načítaní playlistu si zvoľ kanál zo zoznamu.</div>
+          </div>
+          <div class="player-badges">
+            <span id="playerLiveBadge" class="badge badge-live hidden">LIVE</span>
+            <span id="playerQualityBadge" class="badge badge-quality hidden">AUTO</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="channelOverlay" class="channel-overlay hidden">
+      <div class="overlay-inner">
+        <img id="overlayLogo" class="overlay-logo" alt="Logo kanála">
+        <div class="overlay-texts">
+          <div id="overlayName" class="overlay-name">Kanál</div>
+          <div class="overlay-meta">
+            <span class="badge badge-live">LIVE</span>
+            <span id="overlayQuality" class="badge badge-quality">AUTO</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="numericOverlay" class="numeric-overlay hidden">1</div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <div id="firstRunModal" class="modal-backdrop">
+      <div class="modal first-run-modal">
+        <img src="assets/logo/logo.png" alt="IPTV logo" class="first-run-logo">
+        <h1>Vitaj v IPTV Live TV</h1>
+        <p>Zadaj svoj M3U playlist. URL je hlavná možnosť. Import M3U súboru je pridaný ako doplnok podľa podpory TV.</p>
+
+        <label class="field-label" for="playlistUrlInput">M3U URL</label>
+        <input id="playlistUrlInput" class="text-input focusable" data-focus-group="startup" type="url" placeholder="https://example.com/playlist.m3u">
+
+        <div class="first-run-actions">
+          <button id="loadPlaylistBtn" class="primary-btn focusable" data-focus-group="startup">Načítať playlist</button>
+          <label class="secondary-btn file-label focusable" data-focus-group="startup">
+            Importovať M3U súbor
+            <input id="playlistFileInput" type="file" accept=".m3u,.m3u8,text/plain,application/x-mpegURL,audio/x-mpegurl" hidden>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div id="settingsModal" class="modal-backdrop hidden">
+      <div class="modal settings-modal">
+        <div class="modal-top">
+          <h2>Nastavenia</h2>
+          <button id="closeSettingsBtn" class="icon-btn focusable" data-focus-group="settings">✕</button>
+        </div>
+
+        <label class="field-label" for="settingsPlaylistUrl">M3U URL</label>
+        <input id="settingsPlaylistUrl" class="text-input focusable" data-focus-group="settings" type="url" placeholder="https://example.com/playlist.m3u">
+
+        <div class="settings-grid">
+          <button id="settingsLoadBtn" class="primary-btn focusable" data-focus-group="settings">Načítať playlist</button>
+          <label class="secondary-btn file-label focusable" data-focus-group="settings">
+            Importovať M3U súbor
+            <input id="settingsFileInput" type="file" accept=".m3u,.m3u8,text/plain,application/x-mpegURL,audio/x-mpegurl" hidden>
+          </label>
+          <button id="settingsRefreshBtn" class="secondary-btn focusable" data-focus-group="settings">Obnoviť playlist</button>
+          <button id="settingsClearBtn" class="danger-btn focusable" data-focus-group="settings">Vymazať playlist</button>
+        </div>
+
+        <div class="settings-section">
+          <div class="field-label">Kvalita streamu</div>
+          <div class="choice-row" id="qualityChoices">
+            <button class="choice-btn focusable active" data-focus-group="settings" data-quality="auto">Automaticky</button>
+            <button class="choice-btn focusable" data-focus-group="settings" data-quality="high">Vysoká</button>
+            <button class="choice-btn focusable" data-focus-group="settings" data-quality="medium">Stredná</button>
+            <button class="choice-btn focusable" data-focus-group="settings" data-quality="low">Nízka</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="field-label">Titulky</div>
+          <div class="choice-row">
+            <button id="subtitleToggleBtn" class="choice-btn focusable" data-focus-group="settings">Automaticky / vypnuté</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="field-label">Zvuková stopa</div>
+          <div class="choice-row">
+            <button id="audioTrackBtn" class="choice-btn focusable" data-focus-group="settings">Predvolená stopa</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dashjs@latest/dist/dash.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mpegts.js@latest/dist/mpegts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/shaka-player@latest/dist/shaka-player.compiled.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
