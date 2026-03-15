@@ -1,0 +1,19 @@
+{
+  "name": "IPTV Live TV",
+  "platform": "Titan OS",
+  "language": "sk",
+  "mode": "hosted-html5",
+  "entry": "index.html",
+  "features": [
+    "m3u-url",
+    "m3u-file-import-experimental",
+    "categories-from-playlist",
+    "favorites",
+    "search",
+    "numeric-zap",
+    "arrow-zap",
+    "last-channel",
+    "channel-overlay",
+    "playlist-cache"
+  ]
+}
