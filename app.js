@@ -55,10 +55,32 @@ const els = {
   overlayQuality: document.getElementById('overlayQuality'),
   numericOverlay: document.getElementById('numericOverlay'),
   toast: document.getElementById('toast'),
+  playerStatus: document.getElementById('playerStatus'),
   qualityChoices: document.getElementById('qualityChoices'),
   subtitleToggleBtn: document.getElementById('subtitleToggleBtn'),
   audioTrackBtn: document.getElementById('audioTrackBtn')
 };
+
+
+function isHttpUrl(url = '') { return /^http:\/\//i.test(url); }
+function isHttpsPage() { return window.location.protocol === 'https:'; }
+function tryUpgradeToHttps(url = '') { return isHttpUrl(url) ? url.replace(/^http:\/\//i, 'https://') : url; }
+function setPlayerStatus(message = '', isError = false) {
+  if (!message) { els.playerStatus.textContent = ''; els.playerStatus.classList.add('hidden'); return; }
+  els.playerStatus.innerHTML = isError ? `<strong>Prehrávanie:</strong> ${escapeHtml(message)}` : escapeHtml(message);
+  els.playerStatus.classList.remove('hidden');
+}
+function normalizeLogoUrl(url = '') {
+  if (!url) return '';
+  return isHttpsPage() && isHttpUrl(url) ? tryUpgradeToHttps(url) : url;
+}
+function explainPlaybackFailure(channel, err) {
+  const url = channel?.url || '';
+  if (isHttpsPage() && isHttpUrl(url)) {
+    return 'Tento stream je dostupný iba cez HTTP. Browser na HTTPS stránke ho z bezpečnostných dôvodov blokuje. Na TV ho spusti cez HTTP hosting alebo stream s HTTPS.';
+  }
+  return 'Stream sa nepodarilo načítať. Server môže blokovať prehrávanie, stream môže byť nepodporovaný alebo došlo k chybe siete.';
+}
 
 function init() {
   bindEvents();
@@ -97,7 +119,7 @@ function bindEvents() {
   els.channelSearch.addEventListener('input', renderChannels);
   document.addEventListener('keydown', handleGlobalKeys);
 
-  els.video.addEventListener('error', () => scheduleReconnect('Stream sa prerušil. Skúšam obnoviť prehrávanie...'));
+  els.video.addEventListener('error', () => { setPlayerStatus(explainPlaybackFailure(state.channels.find(ch => ch.id === state.selectedChannelId), new Error('video error')), true); scheduleReconnect('Stream sa prerušil. Skúšam obnoviť prehrávanie...'); });
   els.video.addEventListener('ended', () => scheduleReconnect('Stream sa skončil. Skúšam obnoviť prehrávanie...'));
   els.video.addEventListener('stalled', () => scheduleReconnect('Stream sa spomalil. Skúšam obnoviť prehrávanie...'));
 
@@ -126,7 +148,14 @@ async function handlePlaylistUrlLoad(url, fromSettings = false) {
   if (!url) return showToast('Zadaj M3U URL.');
   try {
     showToast('Načítavam playlist...');
-    const res = await fetch(url);
+    let res;
+    try {
+      res = await fetch(url);
+    } catch (e) {
+      // secondary attempt through a permissive text proxy for playlists
+      const proxied = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      res = await fetch(proxied);
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     localStorage.setItem(STORAGE_KEYS.playlistUrl, url);
@@ -259,8 +288,12 @@ function renderCategories() {
 }
 
 function channelLogoHtml(ch) {
-  if (ch.logo) return `<img class="channel-logo" src="${escapeAttr(ch.logo)}" alt="${escapeAttr(ch.name)} logo" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'channel-logo placeholder',textContent:'TV'}))">`;
-  return `<div class="channel-logo placeholder">TV</div>`;
+  const safeLogo = normalizeLogoUrl(ch.logo);
+  if (safeLogo) {
+    const short = escapeHtml((ch.name || 'TV').slice(0, 2).toUpperCase());
+    return `<img class="channel-logo" src="${escapeAttr(safeLogo)}" alt="${escapeAttr(ch.name)} logo" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'channel-logo placeholder',textContent:'${short}'}))">`;
+  }
+  return `<div class="channel-logo placeholder">${escapeHtml((ch.name || 'TV').slice(0, 2).toUpperCase())}</div>`;
 }
 
 function renderChannels() {
@@ -318,11 +351,14 @@ function playChannel(channel, autoPlay = true) {
   els.playerLiveBadge.classList.remove('hidden');
   els.playerQualityBadge.classList.remove('hidden');
   els.playerQualityBadge.textContent = channel.quality;
+  setPlayerStatus('');
   renderChannels();
   showOverlay(channel);
   attachBestPlayer(channel, autoPlay).catch((err) => {
     console.error(err);
-    showToast('Prehrávanie sa nepodarilo spustiť. Stream alebo TV browser ho nepodporuje.');
+    const message = explainPlaybackFailure(channel, err);
+    setPlayerStatus(message, true);
+    showToast('Prehrávanie sa nepodarilo spustiť.');
   });
 }
 
@@ -336,6 +372,7 @@ function stopPlayer() {
   els.playerEmpty.classList.remove('hidden');
   els.playerLiveBadge.classList.add('hidden');
   els.playerQualityBadge.classList.add('hidden');
+  setPlayerStatus('');
 }
 
 function destroyActivePlayer() {
@@ -360,8 +397,8 @@ function inferType(url) {
 }
 
 async function attachBestPlayer(channel, autoPlay = true) {
-  const url = channel.url;
-  const kind = inferType(url);
+  const originalUrl = channel.url;
+  const kind = inferType(originalUrl);
   destroyActivePlayer();
   clearTimeout(state.reconnectTimer);
 
@@ -371,19 +408,26 @@ async function attachBestPlayer(channel, autoPlay = true) {
   else if (kind === 'mpegts') candidates.push('mpegts', 'native');
   else candidates.push('native', 'hls', 'shaka');
 
-  for (const candidate of candidates) {
-    try {
-      await attachPlayer(candidate, url, autoPlay);
-      state.currentPlayerName = candidate;
-      showToast(`Prehrávač: ${playerLabel(candidate)}`);
-      return;
-    } catch (err) {
-      console.warn(`Player ${candidate} failed`, err);
-      destroyActivePlayer();
+  const urlsToTry = [originalUrl];
+  const upgraded = tryUpgradeToHttps(originalUrl);
+  if (upgraded !== originalUrl) urlsToTry.unshift(upgraded);
+
+  for (const candidateUrl of urlsToTry) {
+    for (const candidate of candidates) {
+      try {
+        await attachPlayer(candidate, candidateUrl, autoPlay);
+        state.currentPlayerName = candidate;
+        showToast(`Prehrávač: ${playerLabel(candidate)}`);
+        return;
+      } catch (err) {
+        console.warn(`Player ${candidate} failed`, err);
+        destroyActivePlayer();
+      }
     }
   }
   throw new Error('No compatible player available');
 }
+
 
 function playerLabel(name) {
   return ({ native: 'Natívny', hls: 'HLS.js', dash: 'dash.js', mpegts: 'mpegts.js', shaka: 'Shaka Player' })[name] || name;
@@ -478,6 +522,7 @@ function attachShaka(url, autoPlay) {
 
 function scheduleReconnect(message) {
   if (state.manualStop || !state.currentStreamUrl) return;
+  if (isHttpsPage() && isHttpUrl(state.currentStreamUrl)) return;
   clearTimeout(state.reconnectTimer);
   showToast(message);
   state.reconnectTimer = setTimeout(() => {
@@ -487,10 +532,13 @@ function scheduleReconnect(message) {
 }
 
 function showOverlay(channel) {
-  if (channel.logo) {
-    els.overlayLogo.src = channel.logo;
+  const overlayLogo = normalizeLogoUrl(channel.logo);
+  if (overlayLogo) {
+    els.overlayLogo.src = overlayLogo;
     els.overlayLogo.classList.remove('hidden');
-  } else els.overlayLogo.classList.add('hidden');
+    els.overlayLogo.classList.remove('placeholder');
+    els.overlayLogo.onerror = () => { els.overlayLogo.removeAttribute('src'); els.overlayLogo.alt='TV'; els.overlayLogo.classList.add('placeholder'); els.overlayLogo.classList.remove('hidden'); };
+  } else { els.overlayLogo.removeAttribute('src'); els.overlayLogo.alt='TV'; els.overlayLogo.classList.add('placeholder'); els.overlayLogo.classList.remove('hidden'); }
   els.overlayName.textContent = channel.name;
   els.overlayQuality.textContent = channel.quality;
   els.channelOverlay.classList.remove('hidden');

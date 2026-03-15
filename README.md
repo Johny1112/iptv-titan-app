@@ -33,3 +33,7 @@ Hotový HTML5 projekt pre Titan OS / Philips TV.
 - `app.js` – logika aplikácie
 - `assets/` – ikony, logo, banner, splash
 - `config/app.json` – základná konfigurácia projektu
+
+
+## Dôležité k HTTP streamom
+Ak aplikáciu hostuješ cez HTTPS (napr. GitHub Pages) a playlist obsahuje HTTP streamy alebo HTTP logá, browser ich môže blokovať ako Mixed Content. V4 verzia preto skúša HTTPS variant, zobrazuje jasnejšiu chybu a používa fallback logá.
